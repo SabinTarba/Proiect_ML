@@ -18,6 +18,8 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 
 @st.cache_data 
 def load_data():
@@ -426,198 +428,105 @@ def page_ml():
             ```    
             - Fata de proiectul de la AVMD (sectiunile anterioare), citirea datelor se va realiza direct din fisierul CSV fata de importul si citirea dintr-o baza de date Oracle.
             - Din dropdown se poate alege algoritmul pentru a fi aplicat pe setul de date. Dupa alegere, pasii vor fi executati automat.
+            - Ne propunem sa clasificam filmele in filme cu venit mare si filme cu venit mic.
         """)
     
-    def linear_regression():
-        st.markdown("""
-            #### Pasi
-        """)
+    
+    st.markdown("""
+        #### Pasi
+    """)
 
-        # 1
-        st.write("1. Incarcare CSV intr-o variabila dataframe")
-        df = pd.read_csv("./movies.csv")
-        st.dataframe(df.head())
+    # 1
+    st.write("1. Incarcare CSV intr-o variabila dataframe")
+    df = pd.read_csv("./movies.csv")
+    st.dataframe(df.head())
 
-        #2
-        st.write("2. Vizualizare date si analiza descriptiva")
-        st.write(df.describe())
-        st.write("Valori lipsa")
-        st.write(df.isna().sum())
+    #2
+    st.write("2. Vizualizare date si analiza descriptiva")
+    st.write(df.describe())
+    st.write("Valori lipsa")
+    st.write(df.isna().sum())
 
-        #3
-        st.write("3. Curatarea datelor")
-        st.write("3.1 Completare valori lipsa pentru coloanele numerice cu media si pentru coloanele non-numerice cu valoarea cea mai frecventa")
+    #3
+    st.write("3. Curatarea datelor")
+    st.write("3.1 Completare valori lipsa pentru coloanele numerice cu media si pentru coloanele non-numerice cu valoarea cea mai frecventa")
+    
+    numeric_columns = ['Year', 'Runtime (Minutes)', 'Rating', 'Votes', 'Revenue (Millions)', 'Metascore']
+    for col in numeric_columns:
+        df[col].fillna(df[col].mean(), inplace=True)
+
+    categorical_columns = ['Genre', 'Director', 'Actors']
+    for col in categorical_columns:
+        df[col].fillna(df[col].mode()[0], inplace=True)
+
+    st.write("Valori lipsa dupa procesare")
+    st.write(df.isna().sum())
+
+    st.write("3.2 Aplicare LabelEncoder pentru coloanele categoriale relevante (Genre, Director, Actors)")
+    for col in categorical_columns:
+        le = LabelEncoder()
+        df[col] = le.fit_transform(df[col])
+
+    st.dataframe(df)
+
+    # 4
+    st.write("4. Creare coloana binara de clasificare: filme cu venit mare si filme cu venit mic in functie de mediana")
+    median_revenue = df['Revenue (Millions)'].median()
+    df['High_Revenue'] = (df['Revenue (Millions)'] > median_revenue).astype(int)
+
+    #5
+    st.write("5. Selectare features si target (High_Revenue)")
+    X = df.drop(columns=['High_Revenue', 'Title', 'Description'])
+    y = df['High_Revenue']
+
+    st.dataframe(X)
+    st.dataframe(y)
+
+    #6
+    st.write("6. Standardizare folosind StandardScaler")
+    scaler = StandardScaler()
+    X[numeric_columns[:-1]] = scaler.fit_transform(X[numeric_columns[:-1]])  # Exclude 'Revenue (Millions)' from scaling
+    X.drop(columns=["Revenue (Millions)"], inplace=True)
+
+    #7
+    st.write("7. Dupa standardizare si eliminare 'Revenue (Milions)'")
+    st.dataframe(X)
+
+    #8.
+    st.write("8. Creare set antrenare (80%) si set testare (20%)")
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    #8.
+    alghoritms = ["Regresie logistica", "Arbori de decizie", "Random Forest Classifier", "XGB"]
+
+    for alg in alghoritms:
+        if alg == "Regresie logistica":
+            model = LogisticRegression(max_iter=100)
+        elif alg == "Arbori de decizie":
+            model = DecisionTreeClassifier()
+        elif alg == "Random Forest Classifier":
+            model = RandomForestClassifier(random_state=10)
+        else:
+            model = XGBClassifier(n_jobs=8, random_state = 10)
         
-        numeric_columns = ['Year', 'Runtime (Minutes)', 'Rating', 'Votes', 'Revenue (Millions)', 'Metascore']
-        for col in numeric_columns:
-            df[col].fillna(df[col].mean(), inplace=True)
-
-        categorical_columns = ['Genre', 'Director', 'Actors']
-        for col in categorical_columns:
-            df[col].fillna(df[col].mode()[0], inplace=True)
-
-        st.write("Valori lipsa dupa procesare")
-        st.write(df.isna().sum())
-
-        st.write("3.2 Aplicare LabelEncoder pentru coloanele categoriale relevante (Genre, Director, Actors)")
-        for col in categorical_columns:
-            le = LabelEncoder()
-            df[col] = le.fit_transform(df[col])
-
-        st.dataframe(df)
-
-        st.write("3.3 Creare boxplot pentru variabila 'Revenue (Millions)' pentru a vedea valorile outlier")
-        
-        st.subheader("Boxplot pentru Revenue (Millions)")
-        fig, ax = plt.subplots(figsize=(8, 4))
-        seaborn.boxplot(y=df["Revenue (Millions)"], palette="coolwarm", ax=ax)
-        ax.set_title("Boxplot Revenue (Millions) (detectie outliers)")
-        st.pyplot(fig)
-
-        st.write("3.4 Eliminare outlieri pentru variabila Revenue (Millions) folosind metoda cuartilelor")
-        q_low = df['Revenue (Millions)'].quantile(0.01)
-        q_high = df['Revenue (Millions)'].quantile(0.99)
-        df = df[(df['Revenue (Millions)'] >= q_low) & (df['Revenue (Millions)'] <= q_high)]
-
-        st.subheader("Boxplot pentru Revenue (Millions) - dupa eliminare outlieri")
-        fig, ax = plt.subplots(figsize=(8, 4))
-        seaborn.boxplot(y=df["Revenue (Millions)"], palette="coolwarm", ax=ax)
-        ax.set_title("Boxplot Revenue (Millions) (detectie outliers)")
-        st.pyplot(fig)
-
-        st.write("3.5 Normalizare folosind StandardScaler")
-        scaler = StandardScaler()
-        df[numeric_columns] = scaler.fit_transform(df[numeric_columns])
-        st.dataframe(df)
-
-        st.write("4. Creare set de input si variabila target pentru Revenue Milions.")
-        features = ['Year', 'Runtime (Minutes)', 'Rating', 'Votes', 'Revenue (Millions)', 'Metascore', 'Genre', 'Director', 'Actors']
-        df = df[features]
-
-        X = df.drop(columns=['Revenue (Millions)', 'Year'])
-        y = df['Revenue (Millions)']
-
-        st.subheader("Features")
-        st.write(X)
-
-        st.subheader("Target")
-        st.write(y)
-
-        st.write("5. Creare set antrenare (80%) si testare (20%) si antrenare model Linear Regression")
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        model = LinearRegression()
         model.fit(X_train, y_train)
 
-        st.write("6. Evaluare model pe baza setului de testare")
-        y_pred = model.predict(X_test)
-        st.write("Mean Squared Error:", mean_squared_error(y_test, y_pred))
-        st.write("R^2 Score:", r2_score(y_test, y_pred))
-
-        st.write("Se pot observa valori foarte nepotrivite pentru acest metrici, asa ca vom incerca imbunatatirea modelului prin eliminarea coloanelor Genre, Directors si Actors obtinute prin LabelEncoder")
-
-        st.write("7. Analizam matricea de corelatie si vom alege in continuare variabilele 'Genre', 'Votes', 'Runtime (Minutes)'")
-        st.write(df.corr())
-        
-        st.write("7. Recream modelul si aplicam antrenarea si evaluarea")
-
-        X = df[["Genre", "Votes", "Runtime (Minutes)"]]
-        y = df["Revenue (Millions)"]
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        model = LinearRegression()
-        model.fit(X_train, y_train)
-        st.dataframe(X)
-        y_pred = model.predict(X_test)
-        st.write("Mean Squared Error:", mean_squared_error(y_test, y_pred))
-        st.write("R^2 Score:", r2_score(y_test, y_pred))
-
-        st.write("8. Concluzia")
-        st.markdown("""
-            Datele nu sunt foarte potrivite pentru o regresie liniara, avand in vedere ca nu par a fi foarte corelate la prima vedere. Pentru a obtine un model bun datele vor trebui prelucrate sau reselectate. Setul de date este unul mic de asemenea (1000 de observatii)
-        """)
-
-    def logistic_regression():
-        st.markdown("""
-            #### Pasi
-        """)
-
-        # 1
-        st.write("1. Incarcare CSV intr-o variabila dataframe")
-        df = pd.read_csv("./movies.csv")
-        st.dataframe(df.head())
-
-        #2
-        st.write("2. Vizualizare date si analiza descriptiva")
-        st.write(df.describe())
-        st.write("Valori lipsa")
-        st.write(df.isna().sum())
-
-        #3
-        st.write("3. Curatarea datelor")
-        st.write("3.1 Completare valori lipsa pentru coloanele numerice cu media si pentru coloanele non-numerice cu valoarea cea mai frecventa")
-        
-        numeric_columns = ['Year', 'Runtime (Minutes)', 'Rating', 'Votes', 'Revenue (Millions)', 'Metascore']
-        for col in numeric_columns:
-            df[col].fillna(df[col].mean(), inplace=True)
-
-        categorical_columns = ['Genre', 'Director', 'Actors']
-        for col in categorical_columns:
-            df[col].fillna(df[col].mode()[0], inplace=True)
-
-        st.write("Valori lipsa dupa procesare")
-        st.write(df.isna().sum())
-
-        st.write("3.2 Aplicare LabelEncoder pentru coloanele categoriale relevante (Genre, Director, Actors)")
-        for col in categorical_columns:
-            le = LabelEncoder()
-            df[col] = le.fit_transform(df[col])
-
-        st.dataframe(df)
-
-        # 4
-        st.write("4. Creare coloana binara de clasificare: filme cu venit mare si filme cu venit mic in functie de mediana")
-        median_revenue = df['Revenue (Millions)'].median()
-        df['High_Revenue'] = (df['Revenue (Millions)'] > median_revenue).astype(int)
-
-        #5
-        st.write("5. Selectare features si target (High_Revenue)")
-        X = df.drop(columns=['High_Revenue', 'Title', 'Description'])
-        y = df['High_Revenue']
-
-        st.dataframe(X)
-        st.dataframe(y)
-
-        #6
-        st.write("6. Standardizare folosind StandardScaler")
-        scaler = StandardScaler()
-        X[numeric_columns[:-1]] = scaler.fit_transform(X[numeric_columns[:-1]])  # Exclude 'Revenue (Millions)' from scaling
-        X.drop(columns=["Revenue (Millions)"], inplace=True)
-
-        #7.
-        st.write("7. Creare set antrenare (80%) si set testare (20%)")
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        #8.
-        st.write("8. Antrenare model Logistic Regression")
-        model = LogisticRegression()
-        model.fit(X_train, y_train)
+        st.subheader(f"Model {alg}")
 
         #9.
-        st.write("9. Evaluare model")
+        st.write(f"Evaluare model {alg}")
         y_pred = model.predict(X_test)
 
         st.write("Accuracy:", accuracy_score(y_test, y_pred))
         
-        st.subheader("Matricea de confuzie")
+        st.subheader(f"Matricea de confuzie {alg}")
         conf_matrix = confusion_matrix(y_test, y_pred)
         st.write(conf_matrix)
 
-        st.subheader("Raportul de clasificare")
+        st.subheader(f"Raportul de clasificare {alg}")
         st.write(classification_report(y_test, y_pred))
 
-        st.subheader("Curba ROC si AUC")
+        st.subheader(f"Curba ROC si AUC {alg}")
 
         from sklearn.metrics import roc_auc_score,roc_curve
 
@@ -645,143 +554,6 @@ def page_ml():
         ax.legend()
 
         st.pyplot(fig)
-
-        #10.
-        st.write("10. Concluzii")
-        st.markdown("""
-            Modelul are o acuratete buna (peste 0.5) si AUC peste 0.7 si poate fi luat in considerare pentru modelare, insa poate fi si imbunatatit pentru a ajunge la o acuratete mai buna de atat.
-        """)
-
-    def decision_tree():
-        st.markdown("""
-            #### Pasi
-        """)
-
-        # 1
-        st.write("1. Incarcare CSV intr-o variabila dataframe")
-        df = pd.read_csv("./movies.csv")
-        st.dataframe(df.head())
-
-        #2
-        st.write("2. Vizualizare date si analiza descriptiva")
-        st.write(df.describe())
-        st.write("Valori lipsa")
-        st.write(df.isna().sum())
-
-        #3
-        st.write("3. Curatarea datelor")
-        st.write("3.1 Completare valori lipsa pentru coloanele numerice cu media si pentru coloanele non-numerice cu valoarea cea mai frecventa")
-        
-        numeric_columns = ['Year', 'Runtime (Minutes)', 'Rating', 'Votes', 'Revenue (Millions)', 'Metascore']
-        for col in numeric_columns:
-            df[col].fillna(df[col].mean(), inplace=True)
-
-        categorical_columns = ['Genre', 'Director', 'Actors']
-        for col in categorical_columns:
-            df[col].fillna(df[col].mode()[0], inplace=True)
-
-        st.write("Valori lipsa dupa procesare")
-        st.write(df.isna().sum())
-
-        st.write("3.2 Aplicare LabelEncoder pentru coloanele categoriale relevante (Genre, Director, Actors)")
-        for col in categorical_columns:
-            le = LabelEncoder()
-            df[col] = le.fit_transform(df[col])
-
-        st.dataframe(df)
-
-        # 4
-        st.write("4. Creare coloana binara de clasificare: filme cu venit mare si filme cu venit mic in functie de mediana")
-        median_revenue = df['Revenue (Millions)'].median()
-        df['High_Revenue'] = (df['Revenue (Millions)'] > median_revenue).astype(int)
-
-        #5
-        st.write("5. Selectare features si target (High_Revenue)")
-        X = df.drop(columns=['High_Revenue', 'Title', 'Description'])
-        y = df['High_Revenue']
-
-        st.dataframe(X)
-        st.dataframe(y)
-
-        #6
-        st.write("6. Standardizare folosind StandardScaler")
-        scaler = StandardScaler()
-        X[numeric_columns[:-1]] = scaler.fit_transform(X[numeric_columns[:-1]])  # Exclude 'Revenue (Millions)' from scaling
-        X.drop(columns=["Revenue (Millions)"], inplace=True)
-
-        #7.
-        st.write("7. Creare set antrenare (80%) si set testare (20%)")
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        #8.
-        st.write("8. Antrenare model Decision Tree")
-        model = DecisionTreeClassifier()
-        model.fit(X_train, y_train)
-
-        #9.
-        st.write("9. Evaluare model")
-        y_pred = model.predict(X_test)
-
-        st.write("Accuracy:", accuracy_score(y_test, y_pred))
-        
-        st.subheader("Matricea de confuzie")
-        conf_matrix = confusion_matrix(y_test, y_pred)
-        st.write(conf_matrix)
-
-        st.subheader("Raportul de clasificare")
-        st.write(classification_report(y_test, y_pred))
-
-        st.subheader("Curba ROC si AUC")
-
-        from sklearn.metrics import roc_auc_score,roc_curve
-
-        ns_probs = [0 for _ in range(len(y_test))]
-        # probabiltatile modelului
-        model_probs = model.predict_proba(X_test)
-        # pstram doar probabilitatile pentru valorile pozitive
-        model_probs = model_probs[:, 1]
-        # calcul scor auc
-        ns_auc = roc_auc_score(y_test, ns_probs)
-        lr_auc = roc_auc_score(y_test, model_probs)
-        st.write('No Skill: ROC AUC=%.3f' % (ns_auc))
-        st.write('ROC AUC=%.3f' % (lr_auc))
-        #  roc curves
-        ns_fpr, ns_tpr, _ = roc_curve(y_test, ns_probs)
-        model_fpr, model_tpr, _ = roc_curve(y_test, model_probs)
-        # plot the roc curve for the model
-        fig, ax = plt.subplots(figsize=(8, 6))
-
-        ax.plot(ns_fpr, ns_tpr, linestyle='--', label='No Skill')
-        ax.plot(model_fpr, model_tpr, marker='.', label='Clasifier')
-        # axis labels
-        ax.set_xlabel('False Positive Rate')
-        ax.set_ylabel('True Positive Rate')
-        ax.legend()
-
-        st.pyplot(fig)
-
-        st.subheader("Decision Tree vizualizare")
-        fig, ax = plt.subplots(figsize=(20, 10))
-        plot_tree(model, feature_names=X.columns, class_names=['Low Revenue', 'High Revenue'], filled=True, rounded=True)
-        st.pyplot(fig)  # Render plot in Streamlit
-        
-        #10.
-        st.write("10. Concluzii")
-        st.markdown("""
-            Modelul are o acuratete buna (peste 0.5) si AUC peste 0.6 si poate fi luat in considerare pentru modelare, ar trebui imbunatatit pentru a ajunge la o acuratete mai buna de atat. Regresia logistica a obtinut metrici mai bune pentru acest set de date.
-        """)
-
-    alghoritms = ["Regresie liniara (regresie)", "Regresie logistica (clasificare)", "Arbori de decizie (clasificare)"]
-
-    alg = st.selectbox("Algoritmi", alghoritms)
-
-
-    if alg == "Regresie liniara (regresie)":
-        linear_regression()
-    elif alg == "Regresie logistica (clasificare)":
-        logistic_regression()
-    else:
-        decision_tree()
     
 def main():
 

@@ -13,5 +13,5 @@
 - numpy
 - pandas
 - streamlit
-
+- xgboost
 2. Rulare comanda `streamlit run Movies.py`
